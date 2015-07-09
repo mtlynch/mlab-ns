@@ -79,7 +79,7 @@ class ResolverTestCaseBase(unittest.TestCase):
 
         mock_fetch.assert_called_with(tool_properties_expected)
 
-    def assertQueryResultSingleToolWithRandomSelection(
+    def assertQueryResultSingleToolWithRandomChoice(
             self, query, mock_fetch_results, filtered_tool_candidates,
             tool_properties_expected):
         """Assert that the resolver result matches expected values.
@@ -107,6 +107,46 @@ class ResolverTestCaseBase(unittest.TestCase):
 
             query_results_expected = [
                 filtered_tool_candidates[random_winner_index]]
+            query_results_actual = self.resolver.answer_query(query)
+            self.assertSequenceEqual(query_results_expected,
+                                     query_results_actual)
+
+            # Make sure that the random selection was between the expected
+            # candidate tools, after any filtering
+            self.assertSequenceEqual(filtered_tool_candidates,
+                                     mock_random.call_args[0][0])
+
+        mock_fetch.assert_called_with(tool_properties_expected)
+
+    def assertQueryResultMultiToolWithRandomSample(
+            self, query, mock_fetch_results, filtered_tool_candidates,
+            sample_size, tool_properties_expected):
+        """Assert that the resolver result matches expected values.
+
+        Assert that calling resolver.answer_query finds a list of tool
+        candidates to return and then randomly selects a single tool as the
+        winner. Also asserts that the resolver fetched tools from the db using
+        the correct criteria.
+
+        Args:
+            query: LookupQuery instance based on the client's query.
+            mock_fetch_results: Mock results from querying the db.
+            filtered_tool_candidates: The expected candidate tools from which
+                the resolver will randomly pick a winner.
+            sample_size: The number of randomly selected elements expected in
+                the final result.
+            tool_properties_expected: Expected tool properties that resolver
+                used to retrieve tools from the db.
+        """
+        mock_fetch = tool_fetcher.ToolFetcher().fetch
+        mock_fetch.return_value = mock_fetch_results
+
+        # Mock out random behavior to allow deterministic test results
+        with mock.patch('random.sample') as mock_random:
+            # Make random.sample yield the k last elements of the set
+            mock_random.side_effect = lambda x, k: x[-k:]
+
+            query_results_expected = filtered_tool_candidates[-sample_size:]
             query_results_actual = self.resolver.answer_query(query)
             self.assertSequenceEqual(query_results_expected,
                                      query_results_actual)
@@ -179,6 +219,29 @@ class AllResolverTestCase(ResolverTestCaseBase):
                                         query_results_expected,
                                         tool_properties_expected)
 
+    def testAnswerQueryWhenMatchingToolsExistAndQuerySpecifiesAf(self):
+        """Resolver should take into account address family when specified."""
+        query = lookup_query.LookupQuery()
+        query.tool_id = _TOOL_ID
+        query.tool_address_family = message.ADDRESS_FAMILY_IPv6
+
+        mock_fetched_tools = [_createSliverTool(_TOOL_ID),
+                              _createSliverTool(_TOOL_ID)]
+
+        # AllResolver should not do any additional filtering on the tools it
+        # fetched.
+        query_results_expected = mock_fetched_tools
+
+        # Make sure the resolver is fetching only tools with IPv6 interface
+        # online that match the specified tool ID.
+        tool_properties_expected = tool_fetcher.ToolProperties(
+            tool_id=_TOOL_ID, address_family=message.ADDRESS_FAMILY_IPv6,
+            status=message.STATUS_ONLINE)
+
+        self.assertQueryResultMultiTool(query, mock_fetched_tools,
+                                        query_results_expected,
+                                        tool_properties_expected)
+
     def testAnswerQueryWhenNoToolsMatchToolId(self):
         tool_id = 'non_existent_tool'
         query = lookup_query.LookupQuery()
@@ -218,6 +281,28 @@ class GeoResolverTestCase(ResolverTestCaseBase):
         # specified tool ID.
         tool_properties_expected = tool_fetcher.ToolProperties(
             tool_id=_TOOL_ID, status=message.STATUS_ONLINE)
+
+        mock_fetched_tools = [close_tool, far_tool]
+        self.assertQueryResultSingleTool(query, mock_fetched_tools, close_tool,
+                                         tool_properties_expected)
+
+    def testAnswerQueryWhenSingleToolIsClosestAndQuerySpecifiesAf(self):
+        query = lookup_query.LookupQuery()
+        query.tool_id = _TOOL_ID
+        query.latitude = 0.0
+        query.longitude = 0.0
+        query.tool_address_family = message.ADDRESS_FAMILY_IPv4
+
+        close_tool = _createSliverTool(
+            _TOOL_ID, site_id='abc01', latitude=1.0, longitude=1.0)
+        far_tool = _createSliverTool(
+            _TOOL_ID, site_id='cba01', latitude=5.0, longitude=5.0)
+
+        # Make sure the resolver is fetching only online tools that match the
+        # specified tool ID.
+        tool_properties_expected = tool_fetcher.ToolProperties(
+            tool_id=_TOOL_ID, address_family=message.ADDRESS_FAMILY_IPv4,
+            status=message.STATUS_ONLINE)
 
         mock_fetched_tools = [close_tool, far_tool]
         self.assertQueryResultSingleTool(query, mock_fetched_tools, close_tool,
@@ -283,8 +368,8 @@ class GeoResolverTestCase(ResolverTestCaseBase):
         tool_properties_expected = tool_fetcher.ToolProperties(
             tool_id=_TOOL_ID, status=message.STATUS_ONLINE)
 
-        self.assertQueryResultSingleToolWithRandomSelection(
-            query, mock_fetched_tools, filtered_tools_expected,
+        self.assertQueryResultMultiToolWithRandomSample(
+            query, mock_fetched_tools, filtered_tools_expected, 1,
             tool_properties_expected)
 
 
@@ -440,7 +525,8 @@ class GeoResolverWithOptionsTestCase(ResolverTestCaseBase):
         # Result should be None when there are no matches.
         self.assertIsNone(self.resolver.answer_query(query))
 
-    def testAnswerQueryReturnsRandomToolWhenQueryIsMissingLatLon(self):
+    def testAnswerQueryReturnsRandomSubsetWhenQueryIsMissingLatLon(self):
+        """When lat/lon is missing, expect a random subset of tools."""
         # TODO(mtlynch): This behavior is confusing because it is inconsistent
         # with the other resolvers that return None when required attributes are
         # missing from the query. Change so that all are consistent.
@@ -451,6 +537,12 @@ class GeoResolverWithOptionsTestCase(ResolverTestCaseBase):
             _createSliverTool(
                 _TOOL_ID, site_id='abc01', latitude=1.0, longitude=1.0),
             _createSliverTool(
+                _TOOL_ID, site_id='abc02', latitude=1.0, longitude=1.0),
+            _createSliverTool(
+                _TOOL_ID, site_id='abc03', latitude=1.0, longitude=1.0),
+            _createSliverTool(
+                _TOOL_ID, site_id='abc04', latitude=1.0, longitude=1.0),
+            _createSliverTool(
                 _TOOL_ID, site_id='cba01', latitude=5.0, longitude=5.0)]
 
         # When lat/lon is missing, resolver performs no additional filtering
@@ -460,8 +552,36 @@ class GeoResolverWithOptionsTestCase(ResolverTestCaseBase):
         tool_properties_expected = tool_fetcher.ToolProperties(
             tool_id=_TOOL_ID, status=message.STATUS_ONLINE)
 
-        self.assertQueryResultSingleToolWithRandomSelection(
-            query, mock_fetched_tools, filtered_tools_expected,
+        self.assertQueryResultMultiToolWithRandomSample(
+            query, mock_fetched_tools, filtered_tools_expected, 4,
+            tool_properties_expected)
+
+    def testAnswerQueryReturnsRandomSubsetWhenQueryIsMissingLatLonLowCandidates(
+        self):
+        """When lat/lon is missing, expect a random subset of tools.
+
+        If the number of matching candidates is lower than the number of tools
+        requested, return all the matching candidates.
+        """
+        query = lookup_query.LookupQuery()
+        query.tool_id = _TOOL_ID
+
+        mock_fetched_tools = [
+            _createSliverTool(
+                _TOOL_ID, site_id='abc01', latitude=1.0, longitude=1.0),
+            _createSliverTool(
+                _TOOL_ID, site_id='abc02', latitude=1.0, longitude=1.0)]
+        # When lat/lon is missing, resolver performs no additional filtering
+        # after fetch
+        filtered_tools_expected = mock_fetched_tools
+
+        tool_properties_expected = tool_fetcher.ToolProperties(
+            tool_id=_TOOL_ID, status=message.STATUS_ONLINE)
+
+        # Normally we expect a random sample of 4, but there are only 2
+        # candidates in the set
+        self.assertQueryResultMultiToolWithRandomSample(
+            query, mock_fetched_tools, filtered_tools_expected, 2,
             tool_properties_expected)
 
 
@@ -474,9 +594,10 @@ class RandomResolverTestCase(ResolverTestCaseBase):
         tool_fetcher_patch.start()
         self.resolver = resolver.RandomResolver()
 
-    def testAnswerQueryChoosesRandomlyAmoungOnlineTools(self):
+    def testAnswerQueryChoosesRandomlyAmongOnlineTools(self):
         query = lookup_query.LookupQuery()
         query.tool_id = _TOOL_ID
+        query.tool_address_family = message.ADDRESS_FAMILY_IPv6
 
         mock_fetched_tools = (
             _createSliverTool(_TOOL_ID, site_id='aaa01'),
@@ -490,9 +611,10 @@ class RandomResolverTestCase(ResolverTestCaseBase):
         # Make sure the resolver is fetching only online tools that match the
         # specified tool ID.
         tool_properties_expected = tool_fetcher.ToolProperties(
-            tool_id=_TOOL_ID, status=message.STATUS_ONLINE)
+            tool_id=_TOOL_ID, address_family=message.ADDRESS_FAMILY_IPv6,
+            status=message.STATUS_ONLINE)
 
-        self.assertQueryResultSingleToolWithRandomSelection(
+        self.assertQueryResultSingleToolWithRandomChoice(
             query, mock_fetched_tools, filtered_tools_expected,
             tool_properties_expected)
 
@@ -532,10 +654,11 @@ class MetroResolverTestCase(ResolverTestCaseBase):
         # Result should be None when there are no matches.
         self.assertIsNone(query_results)
 
-    def testAnswerQueryChoosesRandomlyAmoungToolsInMetro(self):
+    def testAnswerQueryChoosesRandomlyAmongToolsInMetro(self):
         query = lookup_query.LookupQuery()
         query.tool_id = _TOOL_ID
         query.metro = 'aaa'
+        query.tool_address_family = message.ADDRESS_FAMILY_IPv4
 
         mock_fetched_tools = (
             _createSliverTool(_TOOL_ID, site_id='aaa01'),
@@ -547,9 +670,10 @@ class MetroResolverTestCase(ResolverTestCaseBase):
         # Make sure the resolver is fetching only online tools that match the
         # specified tool ID in the specified metro.
         tool_properties_expected = tool_fetcher.ToolProperties(
-            tool_id=_TOOL_ID, status=message.STATUS_ONLINE, metro=query.metro)
+            tool_id=_TOOL_ID, status=message.STATUS_ONLINE,
+            address_family=message.ADDRESS_FAMILY_IPv4, metro=query.metro)
 
-        self.assertQueryResultSingleToolWithRandomSelection(
+        self.assertQueryResultSingleToolWithRandomChoice(
             query, mock_fetched_tools, filtered_tools_expected,
             tool_properties_expected)
 
@@ -578,10 +702,11 @@ class CountryResolverTestCase(ResolverTestCaseBase):
         # Result should be None when there are no matches.
         self.assertIsNone(query_results)
 
-    def testAnswerQueryChoosesRandomlyAmoungToolsInCountry(self):
+    def testAnswerQueryChoosesRandomlyAmongToolsInCountry(self):
         country = 'valid_country'
         query = lookup_query.LookupQuery()
         query.tool_id = _TOOL_ID
+        query.tool_address_family = message.ADDRESS_FAMILY_IPv4
         query.country = country
 
         mock_fetched_tools = (
@@ -594,9 +719,10 @@ class CountryResolverTestCase(ResolverTestCaseBase):
         # Make sure the resolver is fetching only online tools that match the
         # specified tool ID in the specified country.
         tool_properties_expected = tool_fetcher.ToolProperties(
-            tool_id=_TOOL_ID, status=message.STATUS_ONLINE, country=country)
+            tool_id=_TOOL_ID, status=message.STATUS_ONLINE,
+            address_family=message.ADDRESS_FAMILY_IPv4, country=country)
 
-        self.assertQueryResultSingleToolWithRandomSelection(
+        self.assertQueryResultSingleToolWithRandomChoice(
             query, mock_fetched_tools, filtered_tools_expected,
             tool_properties_expected)
 
