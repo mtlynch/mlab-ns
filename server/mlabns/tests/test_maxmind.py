@@ -1,3 +1,5 @@
+import os
+import sys
 import unittest2
 import mock
 
@@ -5,6 +7,9 @@ from mlabns.third_party import ipaddr
 from mlabns.util import constants
 from mlabns.util import maxmind
 
+sys.path.insert(1, os.path.abspath(os.path.join(os.path.dirname(__file__),
+                                                '../third_party/pygeoip')))
+import pygeoip
 
 class GeoRecordTestCase(unittest2.TestCase):
     def testDefaultConstructor(self):
@@ -67,6 +72,15 @@ class MaxmindTestClass(unittest2.TestCase):
         def get_by_key_name(self, unused_arg):
             return self.location
 
+    def setUp(self):
+        geoip_patch = mock.patch('pygeoip.GeoIP')
+        self.addCleanup(geoip_patch.stop)
+        geoip_patch.start()
+
+        mock_geoip = mock.Mock()
+        pygeoip.GeoIP.return_value = mock_geoip
+        self.mock_record_by_addr = mock_geoip.record_by_addr
+
     def assertNoneGeoRecord(self, geo_record):
         self.assertIsNone(geo_record.city)
         self.assertIsNone(geo_record.country)
@@ -83,10 +97,13 @@ class MaxmindTestClass(unittest2.TestCase):
         self.assertNoneGeoRecord(maxmind.get_ip_geolocation(None))
         self.assertNoneGeoRecord(maxmind.get_ip_geolocation('abc'))
 
-    @mock.patch('pygeoip.GeoIP.record_by_addr')
-    def testGetGeolocationNoRecordForIp(self, mock_geoip_record_by_addr):
-        mock_geoip_record_by_addr.return_value = None
-        self.assertNoneGeoRecord(maxmind.get_ip_geolocation('1.2.3.4'))
+    def testGetGeolocationNoRecordForIp(self):
+        ip_addr = '1.2.3.4'
+        self.mock_record_by_addr.return_value = None
+        self.assertNoneGeoRecord(maxmind.get_ip_geolocation(ip_addr))
+        self.mock_record_by_addr.assert_called_with(ip_addr)
+        pygeoip.GeoIP.assert_called_with(constants.GEOLOCATION_MAXMIND_CITY_FILE,
+                                      flags=pygeoip.const.STANDARD)
 
     @mock.patch('pygeoip.GeoIP.record_by_addr')
     def testGetGeolocationValidLocation(self, mock_geoip_record_by_addr):
