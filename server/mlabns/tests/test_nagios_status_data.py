@@ -41,13 +41,21 @@ class GetNagiosCredentialsTest(unittest2.TestCase):
         self.testbed.deactivate()
 
     def test_get_nagios_credentials_returns_successfully_from_memcache(self):
-        mock_nagios = mock.Mock()
+        #mock_nagios = mock.Mock()
         #memcache.set(constants.DEFAULT_NAGIOS_ENTRY, mock_nagios)
 
         #actual_nagios = nagios_status_data.get_nagios_credentials()
 
         #self.assertNotEqual(actual_nagios, None)
         #self.assertEqual(constants.DEFAULT_NAGIOS_ENTRY, actual_nagios.key_id)
+
+        with mock.patch('google.appengine.api.memcache') as mock_memcache:
+            mock_memcache.get.return_value = mock.Mock(
+                key_id=constants.DEFAULT_NAGIOS_ENTRY)
+            #actual_nagios= nagios_status_data.get_nagios_credentials()
+            #self.assertNotEqual(actual_nagios, None)
+            #self.assertEqual(constants.DEFAULT_NAGIOS_ENTRY, actual_nagios.key_id)
+
 
 if __name__ == '__main__':
     unittest2.main()
