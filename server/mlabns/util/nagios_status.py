@@ -111,6 +111,7 @@ def evaluate_status_update(sliver_tool, ipversion, slice_status):
         ipversion: string representation of ipversion
         slice_status: dictionary of dictionary representing slice status
     """
+    decoded_fqdn= sliver_tool.fqdn.encode("utf8")
     if has_no_ip(sliver_tool, ipversion):
         if was_online(sliver_tool, ipversion):
             logging.warning(
@@ -121,11 +122,11 @@ def evaluate_status_update(sliver_tool, ipversion, slice_status):
             else:
                 sliver_tool.status_ipv6 = message.STATUS_OFFLINE
     else:
-        sliver_tool.tool_extra = slice_status[sliver_tool.fqdn]['tool_extra']
+        sliver_tool.tool_extra = slice_status[decoded_fqdn]['tool_extra']
         if ipversion == constants.AF_IPV4:
-            sliver_tool.status_ipv4 = slice_status[sliver_tool.fqdn]['status']
+            sliver_tool.status_ipv4 = slice_status[decoded_fqdn]['status']
         else:
-            sliver_tool.status_ipv6 = slice_status[sliver_tool.fqdn]['status']
+            sliver_tool.status_ipv6 = slice_status[decoded_fqdn]['status']
 
 
 def get_slice_status(url):
@@ -183,6 +184,6 @@ def update_sliver_tools_status(slice_status, tool_id, ipversion):
         try:
             sliver_tool.put()
         except db.TransactionFailedError:
-            logging.error('Failed to update status of %s to %s in datastore.',
-                          sliver_tool.fqdn, slice_status[sliver_tool.fqdn])
+            logging.error('Failed to update status of %s in datastore.',
+                          sliver_tool.fqdn)
             continue
