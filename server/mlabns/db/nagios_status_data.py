@@ -1,16 +1,16 @@
-from google.appengine.api import memcache
-
 import logging
+
+from google.appengine.api import memcache
 
 from mlabns.db import model
 from mlabns.util import constants
 
 
 def get_nagios_credentials():
-    """Retrieve nagios authentication information.
+    """Retrieves nagios authentication information.
 
     Returns:
-        Nagios model instance containing nagios credentials,
+        Nagios model instance containing nagios credentials
     """
     nagios = memcache.get(constants.DEFAULT_NAGIOS_ENTRY)
     if not nagios:
@@ -21,38 +21,3 @@ def get_nagios_credentials():
             logging.error('Datastore does not have the Nagios credentials.')
 
     return nagios
-
-
-def get_tools_by_id():
-    """Retrieves tools by id.
-
-    Returns:
-        List of Tool instances
-    """
-    tools = memcache.get('tools_by_id')
-    if not tools:
-        tools = list(model.Tool.gql('ORDER by tool_id DESC').run(
-            batch_size=constants.GQL_BATCH_SIZE))
-        if not memcache.set('tools_by_id', tools):
-            logging.error('Failed to update tools by id in memcache.')
-
-    return tools
-
-
-def get_SliverTool_by_tool_id(tool_id):
-    """Retrieves SliverTools by tool_id.
-
-    Returns:
-        List of SliverTool instances
-    """
-    sliver_tool_key = 'sliver_tool_tool_id_{}'.format(tool_id)
-    sliver_tools = memcache.get(sliver_tool_key)
-
-    if not sliver_tools:
-        sliver_tools = list(model.SliverTool.gql(
-            'WHERE tool_id=:tool_id',
-            tool_id=tool_id).run(batch_size=constants.GQL_BATCH_SIZE))
-        if not memcache.set(sliver_tool_key, sliver_tools):
-            logging.error('Failed to update sliver status in memcache.')
-
-    return sliver_tools

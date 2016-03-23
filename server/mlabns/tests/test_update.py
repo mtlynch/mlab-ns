@@ -87,8 +87,8 @@ class StatusUpdateHandlerTest(unittest2.TestCase):
 
     def test_sends_success_after_successful_authentication(self):
 
-        with mock.patch(
-                'mlabns.handlers.update.nagios_status_data') as mock_nagios:
+        # yapf: disable
+        with mock.patch('mlabns.handlers.update.nagios_status_data') as mock_nagios:
             mock_credentials = mock.Mock(name='mock_credentials',
                                          url='mock_url')
             mock_nagios.get_nagios_credentials.return_value = mock_credentials
@@ -98,8 +98,8 @@ class StatusUpdateHandlerTest(unittest2.TestCase):
 
     def test_sends_not_found_when_nagios_credentials_not_in_datastore(self):
 
-        with mock.patch(
-                'mlabns.handlers.update.nagios_status_data') as mock_nagios:
+        # yapf: disable
+        with mock.patch('mlabns.handlers.update.nagios_status_data') as mock_nagios:
             mock_nagios.get_nagios_credentials.return_value = None
             self.StatusUpdateHandler.get()
 

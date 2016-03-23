@@ -1,11 +1,11 @@
-from google.appengine.api import memcache
-from google.appengine.ext import db
-from google.appengine.ext import webapp
-
 import json
 import logging
 import time
 import urllib2
+
+from google.appengine.api import memcache
+from google.appengine.ext import db
+from google.appengine.ext import webapp
 
 from mlabns.db import model
 from mlabns.db import nagios_status_data
@@ -314,12 +314,12 @@ class IPUpdateHandler(webapp.RequestHandler):
 class StatusUpdateHandler(webapp.RequestHandler):
     """Updates SliverTools' status from nagios."""
 
-    IPV4 = constants.AF_IPV4
-    IPV6 = constants.AF_IPV6
+    IPV4 = constants.NAGIOS_IPV4_SUFFIX
+    IPV6 = constants.NAGIOS_IPV6_SUFFIX
     NAGIOS_AF_SUFFIXES = [IPV4, IPV6]
 
     def get(self):
-        """Update nagios status information."""
+        """Updates nagios status information."""
         nagios = nagios_status_data.get_nagios_credentials()
         if nagios is None:
             return util.send_not_found(self)
@@ -329,9 +329,9 @@ class StatusUpdateHandler(webapp.RequestHandler):
                                                   self.NAGIOS_AF_SUFFIXES)
 
         for url_tuple in slice_urls:
-            slice_url, tool_id, ipversion = url_tuple
+            slice_url, tool_id, ip_version = url_tuple
             slice_status = nagios_status.get_slice_status(slice_url)
             nagios_status.update_sliver_tools_status(slice_status, tool_id,
-                                                     ipversion)
+                                                     ip_version)
 
         return util.send_success(self)
