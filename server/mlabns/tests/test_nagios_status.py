@@ -142,18 +142,16 @@ class StatusUpdateHandlerTest(unittest2.TestCase):
 
     def test_get_slice_status_returns_populated_dictionary_when_it_gets_valid_statuses(
             self):
-        mock_slice_status = """
+        self.mock_urlopen_response.read.return_value = """
 mock.mlab1.xyz01.measurement-lab.org/ndt 0 1 mock tool extra
 mock.mlab2.xyz01.measurement-lab.org/ndt 0 1 mock tool extra
 mock.mlab3.xyz01.measurement-lab.org/ndt 2 1 mock tool extra
 """.lstrip()
-
-        self.mock_urlopen_response.read.return_value = mock_slice_status
-        nagios_status.parse_sliver_tool_status.side_effect = iter([
-            ('mock.mlab1.xyz01.measurement-lab.org', '0', 'mock tool extra'), (
-                'mock.mlab2.xyz01.measurement-lab.org', '0', 'mock tool extra'
-            ), ('mock.mlab3.xyz01.measurement-lab.org', '2', 'mock tool extra')
-        ])
+        nagios_status.parse_sliver_tool_status.side_effect = [
+            ('mock.mlab1.xyz01.measurement-lab.org', '0', 'mock tool extra'),
+            ('mock.mlab2.xyz01.measurement-lab.org', '0', 'mock tool extra'),
+            ('mock.mlab3.xyz01.measurement-lab.org', '2', 'mock tool extra')
+        ]
 
         expected_status = {
             'mock.mlab1.xyz01.measurement-lab.org': {
